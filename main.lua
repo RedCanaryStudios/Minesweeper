@@ -1,5 +1,5 @@
-local gridSize = 15
-local sqrSize = 50
+local gridSize = 45
+local sqrSize = 20
 local density = 0.125
 local grid = {}
 local revealed = {}
@@ -7,21 +7,6 @@ local flag = love.graphics.newImage("red-flag.png")
 local predictions = {}
 local predictions2 = {}
 local dbh = {}
-
-table.find = function(t, e)
-    for i, v in ipairs(t) do
-        if v == e then return i end
-    end
-    return nil
-end
-
-local nums = {}
-
-for i = 1, 8 do
-    nums[i] = love.graphics.newText(love.graphics.newFont("OPTIAntique-Bold.otf", sqrSize*0.5), tostring(i))
-end
-
-math.randomseed(os.time())
 
 local function genGrid(itms, space)
     local sqrln = math.ceil(math.sqrt(itms))
@@ -55,27 +40,111 @@ local function getNeighbors(n, t)
     return s
 end
 
+local XRAY = false
+
+local AI = {}
+AI.mods = {}
+
+AI.MouseProxy = {x = love.mouse.getX(), y = love.mouse.getY()}
+
+AI.Enabled = true
+
+AI.NextTarget = nil;
+AI.Speed = 300;
+
+AI.dist = function(x1, y1, x2, y2)
+    return math.sqrt((x2 - x1)^2 + (y2 - y1)^2)
+end
+
+AI.Step = function(dt)
+    if AI.NextTarget and AI.Enabled then
+        if AI.dist(AI.MouseProxy.x, AI.MouseProxy.y, AI.NextTarget[1], AI.NextTarget[2]) < 1 then
+            love.mouse.setPosition(AI.NextTarget[1], AI.NextTarget[2])
+            local click = AI.NextTarget[3]
+            AI.NextTarget = nil
+            if AI.Callback then
+                AI.Callback(AI.MouseProxy.x, AI.MouseProxy.y, click)
+            end
+        else
+            local d = AI.dist(AI.MouseProxy.x, AI.MouseProxy.y, AI.NextTarget[1], AI.NextTarget[2])
+            local dirx, diry = (AI.NextTarget[1] - AI.MouseProxy.x), (AI.NextTarget[2] - AI.MouseProxy.y)
+            AI.MouseProxy.x = AI.MouseProxy.x + (dirx/d)*dt*AI.Speed*(d/10)
+            AI.MouseProxy.y = AI.MouseProxy.y + (diry/d)*dt*AI.Speed*(d/10)
+            love.mouse.setX(AI.MouseProxy.x)
+            love.mouse.setY(AI.MouseProxy.y)
+        end
+    end
+end
+
+AI.Callback = function(mx, my, click)
+    love.mousepressed(mx, my, click)
+end
+
+AI.mods.next = function(x, y)
+    local avail = {}
+    local f = genGrid(gridSize^2, sqrSize)
+    for i = 1, #predictions do
+        if not (revealed[predictions[i]] == -10) then
+            local px, py = f(predictions[i])
+            px, py = px+love.graphics.getWidth()/2-sqrSize, py+love.graphics.getHeight()/2-sqrSize
+            table.insert(avail, {AI.dist(x, y, px + sqrSize/2, py + sqrSize/2), px + sqrSize/2, py + sqrSize/2, predictions2[i], 2})
+        end
+    end
+    for i = 1, #predictions2 do
+        local px, py = f(predictions2[i])
+        px, py = px+love.graphics.getWidth()/2-sqrSize, py+love.graphics.getHeight()/2-sqrSize
+        table.insert(avail, {AI.dist(x, y, px + sqrSize/2, py + sqrSize/2), px + sqrSize/2, py + sqrSize/2, predictions2[i], 1})
+    end
+    table.sort(avail, function(a, b)
+        return a[1] < b[1]
+    end)
+
+    if avail[1] then
+        AI.NextTarget = {avail[1][2], avail[1][3], avail[1][5]}
+        dbh = {avail[1][4]}
+    end  
+end
+
+table.find = function(t, e)
+    for i, v in ipairs(t) do
+        if v == e then return i end
+    end
+    return nil
+end
+
+local nums = {}
+
+for i = 1, 8 do
+    nums[i] = love.graphics.newText(love.graphics.newFont("OPTIAntique-Bold.otf", sqrSize*0.5), tostring(i))
+end
+
+math.randomseed(os.time())
+
 function love.load()
     love.window.setMode(sqrSize*gridSize, sqrSize*gridSize)
     for i = 1, gridSize^2 do
         if math.random(1, 1/density) == 1 then
-            grid[i] = sqrSize
+            grid[i] = 20
         else
             grid[i] = 0
         end
     end
     
-    for i = 1, gridSize^2 do
+    for i = 1, #grid do
         revealed[i] = -1
     end
     
     for i = 1, #grid do
         for _, v in ipairs(getNeighbors(i, gridSize)) do
-            if grid[v] > 10 then
+            if grid[v] > 19 then
                 grid[i] = grid[i] + 1
             end
         end
     end
+end
+
+function love.update(dt)
+    AI.Step(dt)
 end
 
 function love.draw()
@@ -85,13 +154,13 @@ function love.draw()
         local x, y = f(i)
         
         if i % 2 == 0 then
-            if revealed[i] == -1 then
+            if revealed[i] == -1 or revealed[i] == -10 then
                 love.graphics.setColor(191/255, 225/255, 125/255)
             else
                 love.graphics.setColor(229/255, 194/255, 159/255)
             end
         else
-            if revealed[i] == -1 then
+            if revealed[i] == -1 or revealed[i] == -10 then
                 love.graphics.setColor(142/255, 204/255, 57/255)
             else
                 love.graphics.setColor(215/255, 184/255, 153/255)
@@ -103,11 +172,11 @@ function love.draw()
             if revealed[i] == 0 then
                 love.graphics.setColor(1, 1, 1)
             elseif revealed[i] == 1 then
-                love.graphics.setColor(0.7, 0.7, 1)
+                love.graphics.setColor(0.3, 0.3, 0.8)
             elseif revealed[i] == 2 then
-                love.graphics.setColor(0.7, 1, 0.7)
+                love.graphics.setColor(0.3, 0.7, 0.3)
             elseif revealed[i] == 3 then
-                love.graphics.setColor(1, 0.7, 0.7)
+                love.graphics.setColor(0.8, 0.3, 0.3)
             elseif revealed[i] == 4 then
                 love.graphics.setColor(0, 0.5, 0.5)
             elseif revealed[i] == 5 then
@@ -121,7 +190,7 @@ function love.draw()
             elseif revealed[i] == -10 then
                 love.graphics.setColor(1, 0, 0)
             elseif revealed[i] >= 20 then
-                love.event.quit()
+                love.event.quit("restart")
             else
                 love.graphics.setColor(0.8, 0.8, 0.8)
             end
@@ -132,33 +201,46 @@ function love.draw()
     for i = 1, gridSize^2 do
         if revealed[i] == -10 then
             local x, y = f(i)
+            love.graphics.setColor(1, 1, 1)
             love.graphics.draw(flag, x+love.graphics.getWidth()/2-sqrSize, y+love.graphics.getHeight()/2-sqrSize, 0, sqrSize/512, sqrSize/512, -sqrSize/4, -sqrSize/8)
         end
     end
 
-    for _, v in ipairs(dbh) do
-        local x, y = f(v)
-        
-        love.graphics.setColor(1, 0, 1, 0.5)
+    local x, y = math.floor(love.mouse.getX()/sqrSize), math.floor(love.mouse.getY()/sqrSize)+1
+    local n = x*gridSize+y
+    x, y = f(n)
 
-        love.graphics.rectangle('fill', x+love.graphics.getWidth()/2-sqrSize, y+love.graphics.getHeight()/2-sqrSize, sqrSize, sqrSize)
+    love.graphics.setColor(1, 1, 1, 0.6)
+    love.graphics.rectangle('fill', x+love.graphics.getWidth()/2-sqrSize, y+love.graphics.getHeight()/2-sqrSize, sqrSize, sqrSize)
+
+    if XRAY then
+        for _, v in ipairs(dbh) do
+            local x, y = f(v)
+            
+            love.graphics.setColor(1, 0, 1, 0.5)
+    
+            love.graphics.rectangle('fill', x+love.graphics.getWidth()/2-sqrSize, y+love.graphics.getHeight()/2-sqrSize, sqrSize, sqrSize)
+        end
+    
+        for _, v in ipairs(predictions) do
+            local x, y = f(v)
+            
+            love.graphics.setColor(1, 0, 0, 0.5)
+    
+            love.graphics.rectangle('fill', x+love.graphics.getWidth()/2-sqrSize, y+love.graphics.getHeight()/2-sqrSize, sqrSize, sqrSize)
+        end
+    
+        for _, v in ipairs(predictions2) do
+            local x, y = f(v)
+            
+            love.graphics.setColor(0, 0, 1, 0.5)
+    
+            love.graphics.rectangle('fill', x+love.graphics.getWidth()/2-sqrSize, y+love.graphics.getHeight()/2-sqrSize, sqrSize, sqrSize)
+        end
     end
 
-    for _, v in ipairs(predictions) do
-        local x, y = f(v)
-        
-        love.graphics.setColor(1, 0, 0, 0.5)
-
-        love.graphics.rectangle('fill', x+love.graphics.getWidth()/2-sqrSize, y+love.graphics.getHeight()/2-sqrSize, sqrSize, sqrSize)
-    end
-
-    for _, v in ipairs(predictions2) do
-        local x, y = f(v)
-        
-        love.graphics.setColor(0, 0, 1, 0.5)
-
-        love.graphics.rectangle('fill', x+love.graphics.getWidth()/2-sqrSize, y+love.graphics.getHeight()/2-sqrSize, sqrSize, sqrSize)
-    end
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.print(tostring(dbg))
 end
 
 local revealCache = {}
@@ -186,7 +268,6 @@ function love.mousepressed(mx, my, button)
 
         predictions = {}
         predictions2 = {}
-        dbh = {}
         for i = 1, 2 do
             for i = 1, gridSize^2 do
                 if revealed[i] > 0 and revealed[i] < 9 then
@@ -199,7 +280,9 @@ function love.mousepressed(mx, my, button)
 
                     if #neighbors == revealed[i] then
                         for _, v in ipairs(neighbors) do
-                            table.insert(predictions, v)
+                            if not table.find(predictions, v) then
+                                table.insert(predictions, v)
+                            end
                         end
                     end
 
@@ -212,7 +295,7 @@ function love.mousepressed(mx, my, button)
 
                     if flagged == revealed[i] then
                         for _, v in ipairs(neighbors) do
-                            if not table.find(predictions, v) then
+                            if not table.find(predictions, v) and not table.find(predictions2, v) then
                                 table.insert(predictions2, v)
                             end
                         end
@@ -226,5 +309,12 @@ function love.mousepressed(mx, my, button)
         if revealed[n] == -1 or revealed[n] == -10 then
             revealed[n] = (revealed[n] == -10) and -1 or -10
         end
+    end
+    AI.mods.next(love.mouse.getX(), love.mouse.getY())
+end
+
+function love.keypressed(k)
+    if k == "q" then
+        love.event.quit()
     end
 end
