@@ -1,5 +1,5 @@
-local gridSize = 45
-local sqrSize = 20
+local gridSize = 35
+local sqrSize = 30
 local density = 0.125
 local grid = {}
 local revealed = {}
@@ -7,6 +7,7 @@ local flag = love.graphics.newImage("red-flag.png")
 local predictions = {}
 local predictions2 = {}
 local dbh = {}
+local isFirst = true
 
 local function genGrid(itms, space)
     local sqrln = math.ceil(math.sqrt(itms))
@@ -47,7 +48,7 @@ AI.mods = {}
 
 AI.MouseProxy = {x = love.mouse.getX(), y = love.mouse.getY()}
 
-AI.Enabled = true
+AI.Enabled = false
 
 AI.NextTarget = nil;
 AI.Speed = 300;
@@ -120,8 +121,7 @@ end
 
 math.randomseed(os.time())
 
-function love.load()
-    love.window.setMode(sqrSize*gridSize, sqrSize*gridSize)
+local function reset()
     for i = 1, gridSize^2 do
         if math.random(1, 1/density) == 1 then
             grid[i] = 20
@@ -141,6 +141,10 @@ function love.load()
             end
         end
     end
+end
+
+function love.load()
+    reset()
 end
 
 function love.update(dt)
@@ -239,12 +243,21 @@ function love.draw()
         end
     end
 
-    love.graphics.setColor(1, 1, 1)
-    love.graphics.print(tostring(dbg))
+    if dbg then
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.print(tostring(dbg))
+    end
 end
 
 local revealCache = {}
 local function reveal(n)
+    if isFirst then
+        if not (grid[n] == 0) then
+            reset()
+            return reveal(n)
+        end
+    end
+    isFirst = false
     if revealed[n] == -10 then return end
 
     revealed[n] = grid[n]
@@ -316,5 +329,9 @@ end
 function love.keypressed(k)
     if k == "q" then
         love.event.quit()
+    elseif k == "x" then
+        XRAY = not XRAY
+    elseif k == "a" then
+        AI.Enabled = not AI.Enabled
     end
 end
